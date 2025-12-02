@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Heart, Calendar, Utensils, Sparkles, Clock, Star, Crown, ArrowLeft, Plus, Trash2, User, Mail, Lock, Eye, EyeOff, Music, ShoppingCart, Activity, X, Settings, Bell, BellOff } from 'lucide-react'
+import { Heart, Calendar, Utensils, Sparkles, Clock, Star, Crown, ArrowLeft, Plus, Trash2, User, Mail, Lock, Eye, EyeOff, Music, ShoppingCart, Activity, X, Settings, Bell, BellOff, Check } from 'lucide-react'
 
 type Screen = 'login' | 'home' | 'planner' | 'mood' | 'food' | 'memory' | 'premium' | 'cycle' | 'shopping' | 'notifications'
 type UserType = 'free' | 'premium'
 type MealPeriod = 'cafe-da-manha' | 'lanche-matinal' | 'almoco' | 'lanche-tarde' | 'jantar' | 'lanche-noite' | 'bebidas'
-type LoginStep = 'name' | 'email' | 'password' | 'welcome'
+type LoginTab = 'entrar' | 'cadastrar'
 type CycleStatus = 'menstruation' | 'ovulation' | 'pms'
 type FlowIntensity = 'leve' | 'medio' | 'intenso'
 
@@ -32,7 +32,7 @@ interface Recipe {
 interface User {
   name: string
   email: string
-  password?: string
+  password: string
   isPremium: boolean
 }
 
@@ -68,9 +68,19 @@ interface NotificationSettings {
   food: boolean
 }
 
+// Simulação de banco de dados de usuários
+const usersDatabase: User[] = []
+
+// Declaração global do PayPal
+declare global {
+  interface Window {
+    paypal: any
+  }
+}
+
 export default function LumiApp() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login')
-  const [loginStep, setLoginStep] = useState<LoginStep>('name')
+  const [loginTab, setLoginTab] = useState<LoginTab>('entrar')
   const [userType, setUserType] = useState<UserType>('free')
   const [user, setUser] = useState<User | null>(null)
   const [showPassword, setShowPassword] = useState(false)
@@ -79,6 +89,7 @@ export default function LumiApp() {
     email: '',
     password: ''
   })
+  const [loginError, setLoginError] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTask, setNewTask] = useState('')
   const [selectedMood, setSelectedMood] = useState('')
@@ -106,6 +117,7 @@ export default function LumiApp() {
     mood: true,
     food: true
   })
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
 
   // Verificar se usuário já está logado
   useEffect(() => {
@@ -233,6 +245,12 @@ export default function LumiApp() {
     localStorage.setItem(`lumiNotifications_${userData.email}`, JSON.stringify(notificationSettings))
   }
 
+  // Função para validar email
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
   const moods = [
     { name: 'feliz', emoji: '😊' },
     { name: 'triste', emoji: '😢' },
@@ -338,30 +356,75 @@ export default function LumiApp() {
     return premiumEmails.includes(email.toLowerCase())
   }
 
-  const handleLoginSubmit = () => {
-    if (loginStep === 'name' && loginForm.name.trim()) {
-      setLoginStep('email')
-    } else if (loginStep === 'email' && loginForm.email.trim()) {
-      setLoginStep('password')
-    } else if (loginStep === 'password') {
-      // Criar/fazer login do usuário
-      const isPremium = checkPremiumAccess(loginForm.email)
-      const userData: User = {
-        name: loginForm.name,
-        email: loginForm.email,
-        password: loginForm.password || undefined,
-        isPremium
-      }
-      
-      setUser(userData)
-      setUserType(isPremium ? 'premium' : 'free')
-      saveUserData(userData)
-      setLoginStep('welcome')
-      
-      setTimeout(() => {
-        setCurrentScreen('home')
-      }, 3000)
+  // Função para fazer login
+  const handleLogin = async () => {
+    if (!loginForm.email.trim() || !loginForm.password.trim()) {
+      setLoginError('Por favor, preencha email e senha.')
+      return
     }
+
+    if (!isValidEmail(loginForm.email)) {
+      setLoginError('Por favor, insira um email válido.')
+      return
+    }
+
+    // Buscar usuário no banco de dados simulado
+    const foundUser = usersDatabase.find(
+      u => u.email === loginForm.email && u.password === loginForm.password
+    )
+
+    if (!foundUser) {
+      setLoginError('Conta não encontrada.')
+      return
+    }
+
+    // Login bem-sucedido
+    setUser(foundUser)
+    setUserType(foundUser.isPremium ? 'premium' : 'free')
+    saveUserData(foundUser)
+    setCurrentScreen('home')
+    setLoginError('')
+  }
+
+  // Função para cadastrar
+  const handleSignup = async () => {
+    if (!loginForm.name.trim() || !loginForm.email.trim() || !loginForm.password.trim()) {
+      setLoginError('Por favor, preencha todos os campos.')
+      return
+    }
+
+    if (!isValidEmail(loginForm.email)) {
+      setLoginError('Por favor, insira um email válido.')
+      return
+    }
+
+    if (loginForm.password.length < 6 || loginForm.password.length > 12) {
+      setLoginError('A senha deve ter entre 6 e 12 dígitos.')
+      return
+    }
+
+    // Verificar se email já existe
+    const existingUser = usersDatabase.find(u => u.email === loginForm.email)
+    if (existingUser) {
+      setLoginError('Este email já está cadastrado.')
+      return
+    }
+
+    // Criar novo usuário
+    const isPremium = checkPremiumAccess(loginForm.email)
+    const newUser: User = {
+      name: loginForm.name,
+      email: loginForm.email,
+      password: loginForm.password,
+      isPremium
+    }
+
+    usersDatabase.push(newUser)
+    setUser(newUser)
+    setUserType(isPremium ? 'premium' : 'free')
+    saveUserData(newUser)
+    setCurrentScreen('home')
+    setLoginError('')
   }
 
   const handleLogout = () => {
@@ -374,13 +437,14 @@ export default function LumiApp() {
     setUser(null)
     setUserType('free')
     setCurrentScreen('login')
-    setLoginStep('name')
+    setLoginTab('entrar')
     setLoginForm({ name: '', email: '', password: '' })
     setTasks([])
     setMoodHistory([])
     setCycleData({ cycleDuration: 28, flowDuration: 4, flowIntensity: 'moderado', menstruationDays: {}, ovulationDays: [], pmsDays: [] })
     setShoppingList([])
     setNotificationSettings({ shopping: true, cycle: true, mood: true, food: true })
+    setLoginError('')
   }
 
   const addTask = () => {
@@ -806,52 +870,163 @@ export default function LumiApp() {
     )
   }
 
-  const renderLogin = () => {
-    if (loginStep === 'welcome') {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-rose-300 via-pink-300 to-rose-400 flex items-center justify-center p-4">
-          <div className="max-w-md mx-auto text-center">
-            <img 
-              src="https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/bfb85e76-c73a-4a92-8927-0bb9b158e97f.png" 
-              alt="Lumi Logo" 
-              className="h-20 w-20 rounded-full mx-auto mb-6"
-            />
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-white/20">
-              <h1 className="text-2xl font-bold text-gray-800 mb-4">
-                Seja muito bem-vinda, {user?.name}! 🌷
-              </h1>
-              <p className="text-gray-700 leading-relaxed mb-4">
-                Que alegria ter você por aqui.
+  const renderPaymentModal = () => {
+    if (!showPaymentModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="bg-gradient-to-br from-rose-200/90 via-pink-200/90 to-rose-300/90 backdrop-blur-sm rounded-2xl p-6 max-w-md w-full shadow-2xl border border-white/20">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-800">
+              Escolha seu Plano Premium
+            </h3>
+            <button
+              onClick={() => setShowPaymentModal(false)}
+              className="text-gray-600 hover:text-gray-800"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {/* Plano Trial - 7 dias gratuitos */}
+            <div className="bg-white/70 rounded-xl p-4 border border-white/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="w-5 h-5 text-rose-500" />
+                <h4 className="font-semibold text-gray-800">7 dias gratuitos</h4>
+                <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">Mais Popular</span>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                7 dias gratuitos, depois R$ 9,90/mês nos 3 primeiros meses e após R$ 17,90/mês
               </p>
-              <p className="text-gray-700 leading-relaxed">
-                Estou pronta para iluminar o seu dia — com calma, propósito e um toque de carinho.
+              <p className="text-xs text-gray-500 mb-3">
+                Para esse caso a confirmação do valor só será após o teste grátis, onde a pessoa pode cancelar a qualquer momento dentro da área premium.
               </p>
-              
-              {user?.isPremium && (
-                <div className="mt-6 p-4 bg-gradient-to-r from-rose-400 to-pink-400 rounded-xl text-white">
-                  <p className="font-semibold mb-1">Acesso Premium confirmado, {user.name}!</p>
-                  <p className="text-sm text-rose-100">
-                    Você agora faz parte do Lumi+. Seus dados e mensagens serão salvos automaticamente.
-                  </p>
-                </div>
-              )}
-              
-              {!user?.isPremium && (
-                <div className="mt-6 p-4 bg-gradient-to-r from-amber-100 to-orange-100 rounded-xl">
-                  <p className="text-amber-700 text-sm mb-2">
-                    Alguns recursos estão disponíveis apenas no Lumi+.
-                  </p>
-                  <p className="text-amber-700 text-sm">
-                    Quer desbloquear sua versão Premium e ter acesso às mensagens exclusivas, receitas salvas e planos personalizados?
-                  </p>
-                </div>
-              )}
+              <div id="paypal-button-container-P-0N059655648307406NEDPQJY"></div>
+            </div>
+
+            {/* Plano Trimestral Promocional */}
+            <div className="bg-white/70 rounded-xl p-4 border border-white/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="w-5 h-5 text-rose-500" />
+                <h4 className="font-semibold text-gray-800">Plano Trimestral Promocional</h4>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                R$ 29,70 por 3 meses, depois R$ 53,70 por 3 meses
+              </p>
+              <p className="text-xs text-gray-500 mb-3">
+                Poderá ser gerenciado o plano dentro da área premium
+              </p>
+              <div id="paypal-button-container-P-0KL302929L402935PNEDPT2A"></div>
+            </div>
+
+            {/* Plano Semestral */}
+            <div className="bg-white/70 rounded-xl p-4 border border-white/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="w-5 h-5 text-rose-500" />
+                <h4 className="font-semibold text-gray-800">Plano Semestral</h4>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                R$ 82,90 por 6 meses
+              </p>
+              <p className="text-xs text-gray-500 mb-3">
+                Poderá ser gerenciado o plano dentro da área premium
+              </p>
+              <div id="paypal-button-container-P-0N059655648307406NEDPQJY"></div>
             </div>
           </div>
-        </div>
-      )
-    }
 
+          <p className="text-xs text-gray-500 text-center mt-4">
+            Pagamento seguro via PayPal. Cancele a qualquer momento.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Carregar SDK do PayPal quando modal abrir
+  useEffect(() => {
+    if (showPaymentModal && typeof window !== 'undefined') {
+      // Remover script existente se houver
+      const existingScript = document.querySelector('script[src*="paypal.com/sdk"]')
+      if (existingScript) {
+        existingScript.remove()
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://www.paypal.com/sdk/js?client-id=AUCCxZ593CaEnBy6xQAarYqTkJky3fNXxEUubJmjsjzRBfsrIkax84FcFixk8ccjlgdYbMNL-TTBXn5Y&vault=true&intent=subscription'
+      script.async = true
+      
+      script.onload = () => {
+        if (window.paypal) {
+          // Plano 1: 7 dias gratuitos (primeiro container)
+          window.paypal.Buttons({
+            style: {
+              shape: 'rect',
+              color: 'gold',
+              layout: 'vertical',
+              label: 'subscribe'
+            },
+            createSubscription: function(data: any, actions: any) {
+              return actions.subscription.create({
+                plan_id: 'P-0N059655648307406NEDPQJY',
+                quantity: 1
+              })
+            },
+            onApprove: function(data: any, actions: any) {
+              alert('Assinatura confirmada! ID: ' + data.subscriptionID)
+              setShowPaymentModal(false)
+              // Atualizar usuário para premium
+              if (user) {
+                const updatedUser = { ...user, isPremium: true }
+                setUser(updatedUser)
+                setUserType('premium')
+                localStorage.setItem('lumiUser', JSON.stringify(updatedUser))
+              }
+            }
+          }).render('#paypal-button-container-P-0N059655648307406NEDPQJY')
+
+          // Plano 2: Trimestral
+          window.paypal.Buttons({
+            style: {
+              shape: 'rect',
+              color: 'gold',
+              layout: 'vertical',
+              label: 'subscribe'
+            },
+            createSubscription: function(data: any, actions: any) {
+              return actions.subscription.create({
+                plan_id: 'P-0KL302929L402935PNEDPT2A',
+                quantity: 1
+              })
+            },
+            onApprove: function(data: any, actions: any) {
+              alert('Assinatura confirmada! ID: ' + data.subscriptionID)
+              setShowPaymentModal(false)
+              if (user) {
+                const updatedUser = { ...user, isPremium: true }
+                setUser(updatedUser)
+                setUserType('premium')
+                localStorage.setItem('lumiUser', JSON.stringify(updatedUser))
+              }
+            }
+          }).render('#paypal-button-container-P-0KL302929L402935PNEDPT2A')
+        }
+      }
+
+      document.head.appendChild(script)
+
+      return () => {
+        // Cleanup ao desmontar
+        const scriptToRemove = document.querySelector('script[src*="paypal.com/sdk"]')
+        if (scriptToRemove) {
+          scriptToRemove.remove()
+        }
+      }
+    }
+  }, [showPaymentModal, user])
+
+  const renderLogin = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-rose-300 via-pink-300 to-rose-400 flex items-center justify-center p-4">
         <div className="max-w-md mx-auto w-full">
@@ -866,115 +1041,160 @@ export default function LumiApp() {
           </div>
 
           <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
-            {loginStep === 'name' && (
-              <>
-                <h2 className="text-xl font-semibold text-gray-800 mb-4 text-center">
-                  Olá, sou a Lumi — sua amiga para dias mais leves. 🌷
-                </h2>
-                <p className="text-gray-700 mb-6 text-center">
-                  Que nome você gostaria de ser chamada?
-                </p>
-                <div className="space-y-4">
-                  <div className="relative">
-                    <User className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      value={loginForm.name}
-                      onChange={(e) => setLoginForm({...loginForm, name: e.target.value})}
-                      placeholder="Seu nome"
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                      onKeyPress={(e) => e.key === 'Enter' && handleLoginSubmit()}
-                    />
-                  </div>
+            {/* Tabs */}
+            <div className="flex gap-2 mb-6">
+              <button
+                onClick={() => {
+                  setLoginTab('entrar')
+                  setLoginError('')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${
+                  loginTab === 'entrar'
+                    ? 'bg-rose-400 text-white'
+                    : 'bg-white/50 text-gray-600 hover:bg-white/70'
+                }`}
+              >
+                Já tenho conta - Entrar
+              </button>
+              <button
+                onClick={() => {
+                  setLoginTab('cadastrar')
+                  setLoginError('')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${
+                  loginTab === 'cadastrar'
+                    ? 'bg-rose-400 text-white'
+                    : 'bg-white/50 text-gray-600 hover:bg-white/70'
+                }`}
+              >
+                Não tenho conta - Cadastre-se
+              </button>
+            </div>
+
+            {/* Formulário de Entrar */}
+            {loginTab === 'entrar' && (
+              <div className="space-y-4">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <input
+                    type="email"
+                    value={loginForm.email}
+                    onChange={(e) => {
+                      setLoginForm({...loginForm, email: e.target.value})
+                      setLoginError('')
+                    }}
+                    placeholder="Seu email"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                  />
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={loginForm.password}
+                    onChange={(e) => {
+                      setLoginForm({...loginForm, password: e.target.value})
+                      setLoginError('')
+                    }}
+                    placeholder="Sua senha"
+                    className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  />
                   <button
-                    onClick={handleLoginSubmit}
-                    disabled={!loginForm.name.trim()}
-                    className="w-full bg-rose-400 text-white py-3 px-4 rounded-xl hover:bg-rose-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   >
-                    Continuar
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
-              </>
+                {loginError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <p className="text-sm text-red-600 mb-2">{loginError}</p>
+                    {loginError === 'Conta não encontrada.' && (
+                      <button
+                        onClick={() => setLoginTab('cadastrar')}
+                        className="w-full bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                      >
+                        CONTA NÃO ENCONTRADA - CADASTRE-SE
+                      </button>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={handleLogin}
+                  className="w-full bg-rose-400 text-white py-3 px-4 rounded-xl hover:bg-rose-500 transition-colors"
+                >
+                  Entrar
+                </button>
+              </div>
             )}
 
-            {loginStep === 'email' && (
-              <>
-                <h2 className="text-xl font-semibold text-gray-800 mb-4 text-center">
-                  Perfeito, {loginForm.name}! 💕
-                </h2>
-                <p className="text-gray-700 mb-6 text-center">
-                  Agora, digite seu e-mail para salvar suas mensagens e receitas.
-                </p>
-                <div className="space-y-4">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <input
-                      type="email"
-                      value={loginForm.email}
-                      onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
-                      placeholder="seu@email.com"
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                      onKeyPress={(e) => e.key === 'Enter' && handleLoginSubmit()}
-                    />
-                  </div>
+            {/* Formulário de Cadastro */}
+            {loginTab === 'cadastrar' && (
+              <div className="space-y-4">
+                <div className="relative">
+                  <User className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={loginForm.name}
+                    onChange={(e) => {
+                      setLoginForm({...loginForm, name: e.target.value})
+                      setLoginError('')
+                    }}
+                    placeholder="Como gostaria de ser chamada?"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                  />
+                </div>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <input
+                    type="email"
+                    value={loginForm.email}
+                    onChange={(e) => {
+                      setLoginForm({...loginForm, email: e.target.value})
+                      setLoginError('')
+                    }}
+                    placeholder="Seu email"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                  />
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={loginForm.password}
+                    onChange={(e) => {
+                      setLoginForm({...loginForm, password: e.target.value})
+                      setLoginError('')
+                    }}
+                    placeholder="Senha (6 a 12 dígitos)"
+                    className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                    onKeyPress={(e) => e.key === 'Enter' && handleSignup()}
+                  />
                   <button
-                    onClick={handleLoginSubmit}
-                    disabled={!loginForm.email.trim()}
-                    className="w-full bg-rose-400 text-white py-3 px-4 rounded-xl hover:bg-rose-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   >
-                    Continuar
-                  </button>
-                  <button
-                    onClick={() => setLoginStep('name')}
-                    className="w-full text-gray-600 py-2 text-sm hover:text-gray-800 transition-colors"
-                  >
-                    Voltar
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
-              </>
-            )}
-
-            {loginStep === 'password' && (
-              <>
-                <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">
-                  Deseja criar uma senha? 🔒
-                </h2>
-                <p className="text-gray-700 mb-6 text-center text-sm">
-                  Para salvar seu progresso e acessar o Lumi em qualquer dispositivo
+                <p className="text-xs text-gray-500">
+                  A senha deve ter entre 6 e 12 dígitos
                 </p>
-                <div className="space-y-4">
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={loginForm.password}
-                      onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
-                      placeholder="Senha (opcional)"
-                      className="w-full pl-10 pr-12 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                      onKeyPress={(e) => e.key === 'Enter' && handleLoginSubmit()}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
+                {loginError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                    <p className="text-sm text-red-600">{loginError}</p>
                   </div>
-                  <button
-                    onClick={handleLoginSubmit}
-                    className="w-full bg-rose-400 text-white py-3 px-4 rounded-xl hover:bg-rose-500 transition-colors"
-                  >
-                    Entrar / Criar conta
-                  </button>
-                  <button
-                    onClick={() => setLoginStep('email')}
-                    className="w-full text-gray-600 py-2 text-sm hover:text-gray-800 transition-colors"
-                  >
-                    Voltar
-                  </button>
-                </div>
-              </>
+                )}
+                <button
+                  onClick={handleSignup}
+                  className="w-full bg-rose-400 text-white py-3 px-4 rounded-xl hover:bg-rose-500 transition-colors"
+                >
+                  Cadastrar
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -1934,20 +2154,23 @@ export default function LumiApp() {
 
         <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
           <div className="text-center mb-4">
-            <p className="text-2xl font-bold text-gray-800">R$ 9,90/mês</p>
-            <p className="text-sm text-gray-600">Promoção dos primeiros 3 meses</p>
-            <p className="text-xs text-gray-500">Depois R$ 17,90/mês</p>
+            <p className="text-2xl font-bold text-gray-800">A partir de R$ 9,90/mês</p>
+            <p className="text-sm text-gray-600">Vários planos disponíveis</p>
           </div>
 
-          <button className="w-full bg-gradient-to-r from-rose-400 to-pink-400 text-white py-4 px-6 rounded-xl font-semibold hover:from-rose-500 hover:to-pink-500 transition-all mb-3">
+          <button 
+            onClick={() => setShowPaymentModal(true)}
+            className="w-full bg-gradient-to-r from-rose-400 to-pink-400 text-white py-4 px-6 rounded-xl font-semibold hover:from-rose-500 hover:to-pink-500 transition-all mb-3"
+          >
             Começar Teste Gratuito de 7 Dias
           </button>
 
           <p className="text-xs text-gray-500 text-center">
-            Cancele a qualquer momento. Sem compromisso.
+            Pagamento seguro via PayPal. Cancele a qualquer momento.
           </p>
         </div>
       </div>
+      {renderPaymentModal()}
     </div>
   )
 
